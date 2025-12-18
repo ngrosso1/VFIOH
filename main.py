@@ -12,6 +12,7 @@ from vmCreation import get_sys_info, create_vm, modify_storage_bus, update_displ
 from getISO import ensure_libvirt_access, virtioDrivers
 from hooks import setup_libvirt_hooks, update_start_sh, update_revert_sh, add_gpu_passthrough_devices
 from moving import main_moving
+from troubleshoot_orchestrator import TroubleshootOrchestrator
 
 PROGRESS_FILE = "progress.json"
 
@@ -405,6 +406,40 @@ class Api:
     def start_choice_5(self):
         """Execute choice 5 - Moving VMs (runs synchronously for interactive menu)"""
         main_moving()
+    
+    def start_choice_6(self):
+        """Execute choice 6 - AI Troubleshooting"""
+        print("\033[2J\033[H", end="", flush=True)  # Clear screen
+        
+        print(f"{BLUE}AI-Assisted Troubleshooting{RESET}")
+        print("="*70)
+        print("\nThis will:")
+        print("  1. Collect system logs and diagnostic data")
+        print("  2. Run deterministic checks for common issues")
+        print("  3. Use AI to analyze and recommend solutions")
+        print("\n" + "="*70)
+        
+        troubleshooter = TroubleshootOrchestrator()
+        
+        # Check if there's a saved VM name from progress
+        progress = loadProgress()
+        vm_name = None
+        failed_step = None
+        
+        if progress:
+            vm_name = progress.get("data", {}).get("vm_name")
+            failed_step = f"Step {progress.get('choice')}.{progress.get('step')}"
+        
+        try:
+            troubleshooter.interactive_troubleshoot(vm_name, failed_step)
+        except KeyboardInterrupt:
+            print(f"\n\n\033[93mTroubleshooting interrupted{RESET}")
+        except Exception as e:
+            print(f"\n\033[91mError during troubleshooting: {e}{RESET}")
+            import traceback
+            traceback.print_exc()
+        
+        input("\nPress Enter to return to main menu...")
 
 def run_terminal_mode():
     """Run the application in terminal mode"""
@@ -422,7 +457,8 @@ def run_terminal_mode():
             ("Resume Previous Setup", "3"),
             ("Custom Functions --- (Advanced)", "4"),
             ("Moving VMs", "5"),
-            ("Exit", "6")
+            ("AI Troubleshooting", "6"),
+            ("Exit", "7")
         ]
         
         choice = show_menu(menu_options)
@@ -449,6 +485,9 @@ def run_terminal_mode():
             api.start_choice_5()
             time.sleep(1)
         elif choice == "6":
+            api.start_choice_6()
+            time.sleep(1)
+        elif choice == "7":
             print("Exiting...")
             break
 

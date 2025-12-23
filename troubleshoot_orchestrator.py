@@ -6,6 +6,7 @@ Coordinates log collection, deterministic checks, and AI analysis
 import subprocess
 import sys
 import os
+import time
 from pathlib import Path
 
 from troubleshoot.collector import LogCollector
@@ -13,7 +14,6 @@ from troubleshoot.checks import SystemChecker
 from troubleshoot.report import ReportGenerator
 from ai.interface import LLMInterface
 
-# Colors
 RED = '\033[91m'
 GREEN = '\033[92m'
 YELLOW = '\033[93m'
@@ -31,15 +31,13 @@ class TroubleshootOrchestrator:
         """Run full diagnostic without AI"""
         print(f"\n{BLUE}Running system diagnostics...{RESET}")
         
-        # Collect all diagnostic data
+        # Collecting all diagnostic data
         print("Collecting system information...")
         diagnostic_data, log_file = self.collector.collect_all(vm_name, failed_step)
         
-        # Run deterministic checks
         print("Running deterministic checks...")
         check_results = self.checker.run_all_checks(diagnostic_data)
         
-        # Print report
         self.reporter.print_diagnostic_summary(diagnostic_data, check_results)
         
         print(f"\n{GREEN}Full diagnostic saved to:{RESET} {log_file}")
@@ -49,7 +47,6 @@ class TroubleshootOrchestrator:
     def setup_llm(self, use_container=True, model="llama3.1:8b"):
         """Set up LLM connection"""
         if use_container:
-            # Check if container is running
             try:
                 result = subprocess.run(
                     ["docker", "ps", "--filter", "name=vfioh-ollama", "--format", "{{.Names}}"],
@@ -85,10 +82,8 @@ class TroubleshootOrchestrator:
                 print(f"{RED}❌ Docker not found. Please install Docker{RESET}")
                 return False
         
-        # Initialize LLM interface
         self.llm = LLMInterface(provider="ollama", model=model)
         
-        # Check if LLM is available
         if not self.llm.is_available():
             print(f"{RED}❌ Cannot connect to Ollama{RESET}")
             if use_container:
@@ -99,7 +94,6 @@ class TroubleshootOrchestrator:
         
         print(f"{GREEN}✅ Connected to Ollama{RESET}")
         
-        # Check if model is available
         models = self.llm.list_models()
         if not models:
             print(f"{YELLOW}No models found{RESET}")
@@ -130,17 +124,13 @@ class TroubleshootOrchestrator:
         print(f"\n{BLUE}Running AI analysis...{RESET}")
         print("This may take 30-60 seconds...")
         
-        # Format data for LLM
         formatted_data = self.reporter.format_for_llm(diagnostic_data, check_results)
-        
-        # Get AI analysis
         llm_response, error = self.llm.analyze_diagnostics(formatted_data)
         
         if error:
             print(f"{RED}❌ AI analysis failed: {error}{RESET}")
             return None
         
-        # Print AI analysis
         self.reporter.print_llm_analysis(llm_response)
         
         return llm_response
@@ -189,60 +179,122 @@ class TroubleshootOrchestrator:
     
     def interactive_troubleshoot(self, vm_name=None, failed_step=None):
         """Interactive troubleshooting session"""
-        # Run initial diagnostic
-        diagnostic_data, check_results, log_file = self.run_diagnostic(vm_name, failed_step)
+        # Collecting diagnostic data
+        print(f"\n{BLUE}Collecting system diagnostic data...{RESET}")
+        diagnostic_data, log_file = self.collector.collect_all(vm_name, failed_step)
+        check_results = self.checker.run_all_checks(diagnostic_data)
         
-        # Check if we should proceed with AI
-        issues = check_results.get("issues", [])
+        print(f"{GREEN}✓ Diagnostic data collected{RESET}")
+        print(f"Full diagnostic saved to: {log_file}\n")
         
-        if not issues:
-            print(f"\n{GREEN}No issues detected!{RESET}")
-            print("If you're still experiencing problems, they may require manual investigation")
+        from main import show_menu
+        
+        llm_options = [
+            ("Containerized Ollama (recommended)", "container"),
+            ("Existing Ollama installation", "local"),
+            ("Back to Main Menu", "back")
+        ]
+        
+        llm_choice = show_menu(llm_options, title="Choose LLM Source")
+        
+        if llm_choice == "back":
             return
         
-        # Offer AI analysis
-        print(f"\n{YELLOW}Would you like AI-assisted analysis?{RESET}")
-        use_ai = input("Run AI troubleshooting? (yes/no): ").strip().lower()
+        use_container = llm_choice == "container"
         
-        if use_ai not in ['yes', 'y']:
-            print("Diagnostic complete. Check the report above for issues")
-            return
-        
-        # Set up LLM
-        print(f"\n{BLUE}Choose LLM source:{RESET}")
-        print("1. Containerized Ollama (recommended)")
-        print("2. Existing Ollama installation")
-        
-        choice = input("Enter choice (1/2): ").strip()
-        
-        use_container = choice != "2"
-        
-        # Ask for model preference
-        print(f"\n{BLUE}Choose model:{RESET}")
-        print("1. llama3.1:8b (Recommended - 8GB RAM)")
-        print("2. llama3.2:3b (Faster - 4GB RAM)")
-        print("3. mixtral:8x7b (Most accurate - 16GB RAM)")
-        
-        model_choice = input("Enter choice (1/2/3): ").strip()
-        
-        if model_choice == "2":
-            model = "llama3.2:3b"
-        elif model_choice == "3":
-            model = "mixtral:8x7b"
+        if use_container:
+            model_options = [
+                ("llama3.1:8b (Recommended - 8GB RAM)", "llama3.1:8b"),
+                ("llama3.2:3b (Faster - 4GB RAM)", "llama3.2:3b"),
+                ("mixtral:8x7b (Most accurate - 16GB RAM)", "mixtral:8x7b"),
+                ("Enter custom model name", "custom"),
+                ("Back", "back")
+            ]
+            
+            model = show_menu(model_options, title="Choose Model")
+            
+            if model == "back":
+                return self.interactive_troubleshoot(vm_name, failed_step)
+            elif model == "custom":
+                print("\033[2J\033[H", end="", flush=True)
+                print(f"{BLUE}Enter Custom Model Name{RESET}")
+                print("="*70)
+                print("Examples: llama3:70b, codellama:13b, mistral:latest")
+                print("="*70)
+                model = input("\nModel name: ").strip()
+                if not model:
+                    print(f"{RED}No model specified, returning to menu{RESET}")
+                    time.sleep(2)
+                    return self.interactive_troubleshoot(vm_name, failed_step)
         else:
-            model = "llama3.1:8b"
+            print(f"\n{BLUE}Checking for local Ollama installation...{RESET}")
+            
+            try:
+                result = subprocess.run(
+                    ["ollama", "list"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                if result.returncode != 0 or "could not connect" in result.stderr.lower():
+                    print(f"{RED}❌ Ollama is not running{RESET}")
+                    print("Please start Ollama first: ollama serve")
+                    input("\nPress Enter to return to menu...")
+                    return
+                
+                # Parsing Ollama output
+                lines = result.stdout.strip().split('\n')
+                if len(lines) <= 1:
+                    print(f"{YELLOW}No models found in local Ollama{RESET}")
+                    print("Please pull a model first: ollama pull llama3.1:8b")
+                    input("\nPress Enter to return to menu...")
+                    return
+                
+                # Grabbing model names
+                available_models = []
+                for line in lines[1:]:  # Skipping header
+                    parts = line.split()
+                    if parts:
+                        model_name = parts[0]
+                        available_models.append(model_name)
+                
+                if not available_models:
+                    print(f"{YELLOW}No models found in local Ollama{RESET}")
+                    print("Please pull a model first: ollama pull llama3.1:8b")
+                    input("\nPress Enter to return to menu...")
+                    return
+                
+                model_options = [(f"{model}", model) for model in available_models]
+                model_options.append(("Back", "back"))
+                
+                model = show_menu(model_options, title="Select Model from Local Ollama")
+                
+                if model == "back":
+                    return self.interactive_troubleshoot(vm_name, failed_step)
+                
+            except FileNotFoundError:
+                print(f"{RED}❌ Ollama command not found{RESET}")
+                print("Please install Ollama: https://ollama.com")
+                input("\nPress Enter to return to menu...")
+                return
+            except Exception as e:
+                print(f"{RED}❌ Error checking Ollama: {e}{RESET}")
+                input("\nPress Enter to return to menu...")
+                return
+        
+        # Clears screen
+        print("\033[2J\033[H", end="", flush=True)
         
         if not self.setup_llm(use_container, model):
             print(f"{RED}Failed to set up LLM{RESET}")
             return
         
-        # Run AI analysis
         llm_response = self.run_ai_analysis(diagnostic_data, check_results)
         
         if not llm_response:
             return
         
-        # Process recommendations
         recommendations = llm_response.get("recommendations", [])
         
         if not recommendations:

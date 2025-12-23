@@ -6,6 +6,7 @@ import io
 import time
 import tty
 import termios
+import subprocess
 
 from kernelUpdates import installations, kernelBootChanges_no_prompt
 from vmCreation import get_sys_info, create_vm, modify_storage_bus, update_display_to_vnc, cleanupDrives
@@ -146,6 +147,83 @@ class Api:
         if not isinstance(msg, str):
             msg = str(msg)
         print(msg)
+    
+    def _get_available_vms(self):
+        """Get list of all VMs with their status"""
+        try:
+            # Get all VMs
+            result = subprocess.run(
+                ["virsh", "list", "--all", "--name"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode != 0:
+                return None, "Failed to list VMs"
+            
+            vm_names = [name.strip() for name in result.stdout.strip().split('\n') if name.strip()]
+            
+            if not vm_names:
+                return [], None
+            
+            # Get status for each VM
+            vms_with_status = []
+            for vm_name in vm_names:
+                status_result = subprocess.run(
+                    ["virsh", "domstate", vm_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                if status_result.returncode == 0:
+                    status = status_result.stdout.strip()
+                    is_running = status.lower() in ["running", "paused"]
+                    vms_with_status.append((vm_name, is_running))
+                else:
+                    vms_with_status.append((vm_name, False))
+            
+            return vms_with_status, None
+            
+        except FileNotFoundError:
+            return None, "virsh command not found. Is libvirt installed?"
+        except subprocess.TimeoutExpired:
+            return None, "Timeout while listing VMs"
+        except Exception as e:
+            return None, f"Error listing VMs: {str(e)}"
+    
+    def _select_vm(self):
+        """Show VM selection menu and return selected VM name"""
+        vms_with_status, error = self._get_available_vms()
+        
+        if error:
+            print(f"\033[91m{error}\033[0m")
+            input("\nPress Enter to continue...")
+            return None
+        
+        if not vms_with_status:
+            print("\033[91mNo VMs found. Please create a VM first.\033[0m")
+            input("\nPress Enter to continue...")
+            return None
+        
+        # Build menu options
+        menu_options = []
+        for vm_name, is_running in vms_with_status:
+            if is_running:
+                display_text = f"{vm_name} \033[93m(⚠️  RUNNING - PLEASE STOP THIS VM BEFORE CONTINUING)\033[0m"
+            else:
+                display_text = vm_name
+            menu_options.append((display_text, vm_name))
+        
+        menu_options.append(("Back to Custom Functions Menu", "back"))
+        
+        selected = show_menu(menu_options, title="Select VM")
+        
+        if selected == "back":
+            return None
+        
+        return selected
 
     def start_choice_1(self):
         self._run_in_thread(self._execute_choice_1)
@@ -239,7 +317,7 @@ class Api:
         
         self.log_message("\n--- Setting Up Libvirt Hooks ---")
         try:
-            setup_libvirt_hooks()
+            setup_libvirt_hooks(vm_name)
             saveProgress(2, 9)
         except Exception as e:
             self.log_message(f"ERROR setting up hooks: {e}")
@@ -323,7 +401,7 @@ class Api:
         saveProgress(2, 8)
         
         self.log_message("\n--- Setting Up Libvirt Hooks ---")
-        setup_libvirt_hooks()
+        setup_libvirt_hooks(vm_name)
         saveProgress(2, 9)
         
         self.log_message("\n--- Updating start.sh Script ---")
@@ -380,26 +458,89 @@ class Api:
                 vm_name = create_vm(self.distro)
                 input("\nPress Enter to continue...")
             elif selection == "4":
-                #TODO
-                input("\nPress Enter to continue...")
+                # Clear screen for execution
+                print("\033[2J\033[H", end="", flush=True)
+                vm_name = self._select_vm()
+                if vm_name:
+                    print("\033[2J\033[H", end="", flush=True)
+                    try:
+                        modify_storage_bus(vm_name)
+                        print("\033[92mStorage bus modification complete!\033[0m")
+                    except Exception as e:
+                        print(f"\033[91mError: {e}\033[0m")
+                    input("\nPress Enter to continue...")
             elif selection == "5":
-                #TODO
-                input("\nPress Enter to continue...")
+                # Clear screen for execution
+                print("\033[2J\033[H", end="", flush=True)
+                vm_name = self._select_vm()
+                if vm_name:
+                    print("\033[2J\033[H", end="", flush=True)
+                    try:
+                        update_display_to_vnc(vm_name, self.distro)
+                        print("\033[92mDisplay update complete!\033[0m")
+                    except Exception as e:
+                        print(f"\033[91mError: {e}\033[0m")
+                    input("\nPress Enter to continue...")
             elif selection == "6":
-                #TODO
-                input("\nPress Enter to continue...")
+                # Clear screen for execution
+                print("\033[2J\033[H", end="", flush=True)
+                vm_name = self._select_vm()
+                if vm_name:
+                    print("\033[2J\033[H", end="", flush=True)
+                    try:
+                        cleanupDrives(vm_name)
+                        print("\033[92mDrive cleanup complete!\033[0m")
+                    except Exception as e:
+                        print(f"\033[91mError: {e}\033[0m")
+                    input("\nPress Enter to continue...")
             elif selection == "7":
-                #TODO
-                input("\nPress Enter to continue...")
+                # Clear screen for execution
+                print("\033[2J\033[H", end="", flush=True)
+                vm_name = self._select_vm()
+                if vm_name:
+                    print("\033[2J\033[H", end="", flush=True)
+                    try:
+                        setup_libvirt_hooks(vm_name)
+                        print("\033[92mLibvirt hooks setup complete!\033[0m")
+                    except Exception as e:
+                        print(f"\033[91mError: {e}\033[0m")
+                    input("\nPress Enter to continue...")
             elif selection == "8":
-                #TODO
-                input("\nPress Enter to continue...")
+                # Clear screen for execution
+                print("\033[2J\033[H", end="", flush=True)
+                vm_name = self._select_vm()
+                if vm_name:
+                    print("\033[2J\033[H", end="", flush=True)
+                    try:
+                        update_start_sh(vm_name)
+                        print("\033[92mstart.sh update complete!\033[0m")
+                    except Exception as e:
+                        print(f"\033[91mError: {e}\033[0m")
+                    input("\nPress Enter to continue...")
             elif selection == "9":
-                #TODO
-                input("\nPress Enter to continue...")
+                # Clear screen for execution
+                print("\033[2J\033[H", end="", flush=True)
+                vm_name = self._select_vm()
+                if vm_name:
+                    print("\033[2J\033[H", end="", flush=True)
+                    try:
+                        update_revert_sh(vm_name)
+                        print("\033[92mrevert.sh update complete!\033[0m")
+                    except Exception as e:
+                        print(f"\033[91mError: {e}\033[0m")
+                    input("\nPress Enter to continue...")
             elif selection == "10":
-                #TODO
-                input("\nPress Enter to continue...")
+                # Clear screen for execution
+                print("\033[2J\033[H", end="", flush=True)
+                vm_name = self._select_vm()
+                if vm_name:
+                    print("\033[2J\033[H", end="", flush=True)
+                    try:
+                        add_gpu_passthrough_devices(vm_name)
+                        print("\033[92mGPU passthrough devices added!\033[0m")
+                    except Exception as e:
+                        print(f"\033[91mError: {e}\033[0m")
+                    input("\nPress Enter to continue...")
             elif selection == "back":
                 break
         
@@ -409,16 +550,6 @@ class Api:
     
     def start_choice_6(self):
         """Execute choice 6 - AI Troubleshooting"""
-        print("\033[2J\033[H", end="", flush=True)  # Clear screen
-        
-        print(f"{BLUE}AI-Assisted Troubleshooting{RESET}")
-        print("="*70)
-        print("\nThis will:")
-        print("  1. Collect system logs and diagnostic data")
-        print("  2. Run deterministic checks for common issues")
-        print("  3. Use AI to analyze and recommend solutions")
-        print("\n" + "="*70)
-        
         troubleshooter = TroubleshootOrchestrator()
         
         # Check if there's a saved VM name from progress

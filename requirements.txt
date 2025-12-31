@@ -1,0 +1,9 @@
+# Core Python packages
+requests>=2.31.0
+libvirt-python>=10.0.0
+# Note: libvirt-python requires libvirt development headers on build system
+
+# For potential TUI (if you're using one)
+# textual>=0.52.0  # If using Textual
+# urwid>=2.1.2     # If using Urwid
+# curses           # Usually comes with Python

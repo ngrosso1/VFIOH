@@ -11,7 +11,7 @@ import subprocess
 from kernelUpdates import installations, kernelBootChanges_no_prompt
 from vmCreation import get_sys_info, create_vm, modify_storage_bus, update_display_to_vnc, cleanupDrives
 from getISO import ensure_libvirt_access, virtioDrivers
-from hooks import setup_libvirt_hooks, update_start_sh, update_revert_sh, add_gpu_passthrough_devices
+from hooks.hooks import setup_libvirt_hooks, update_start_sh, update_revert_sh, add_gpu_passthrough_devices
 from moving import main_moving
 from troubleshoot_orchestrator import TroubleshootOrchestrator
 
@@ -570,7 +570,7 @@ class Api:
             import traceback
             traceback.print_exc()
         
-        input("\nPress Enter to return to main menu...")
+        # No "Press Enter" prompt - just return to menu
 
 def run_terminal_mode():
     """Run the application in terminal mode"""
@@ -617,7 +617,7 @@ def run_terminal_mode():
             time.sleep(1)
         elif choice == "6":
             api.start_choice_6()
-            time.sleep(1)
+            # No sleep needed, goes straight back to menu
         elif choice == "7":
             print("Exiting...")
             break

@@ -2,6 +2,7 @@ import subprocess
 import shutil
 import xml.etree.ElementTree as ET
 import libvirt
+import os
 
 GREEN = '\033[92m'
 RED = '\033[91m'
@@ -30,6 +31,9 @@ def restart_libvirt_service():
 
 def setup_libvirt_hooks(vm_name: str):
     try:
+        # Get the directory where this script is located
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        
         #Creating hooks directory
         subprocess.run(["mkdir", "-p", "/etc/libvirt/hooks"], check=True)
 
@@ -52,9 +56,12 @@ def setup_libvirt_hooks(vm_name: str):
         subprocess.run(["mkdir", "-p", prepare_dir], check=True)
         subprocess.run(["mkdir", "-p", release_dir], check=True)
 
-        #Copying start.sh and revert.sh
-        subprocess.run(["cp", "start.sh", prepare_dir], check=True)
-        subprocess.run(["cp", "revert.sh", release_dir], check=True)
+        #Copying start.sh and revert.sh from hooks directory
+        start_sh_source = os.path.join(script_dir, "start.sh")
+        revert_sh_source = os.path.join(script_dir, "revert.sh")
+        
+        subprocess.run(["cp", start_sh_source, prepare_dir], check=True)
+        subprocess.run(["cp", revert_sh_source, release_dir], check=True)
         subprocess.run(["chmod", "+x", f"{prepare_dir}/start.sh"], check=True)
         subprocess.run(["chmod", "+x", f"{release_dir}/revert.sh"], check=True)
 
